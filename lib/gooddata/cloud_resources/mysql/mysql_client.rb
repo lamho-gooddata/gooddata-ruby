@@ -39,6 +39,7 @@ module GoodData
           @database = options['mysql_client']['connection']['database']
           @authentication = options['mysql_client']['connection']['authentication']
           @ssl_mode = options['mysql_client']['connection']['sslMode']
+          @databaseType = options['mysql_client']['connection']['databaseType']
           raise "SSL Mode should be prefer, require and verify-full" unless @ssl_mode == 'prefer' || @ssl_mode == 'require' || @ssl_mode == 'verify-full'
 
           @url = build_url(options['mysql_client']['connection'])
@@ -82,18 +83,35 @@ module GoodData
         prop.setProperty('user', @authentication['basic']['userName'])
         prop.setProperty('password', @authentication['basic']['password'])
 
-        @connection = java.sql.DriverManager.getConnection(@url, prop)
-        @connection.set_auto_commit(false)
+        if(@databaseType == 'MongoDBBI')
+          @connection = java.sql.DriverManager.getConnection(@url, prop)
+        else
+          @connection = java.sql.DriverManager.getConnection(@url, prop)
+          @connection.set_auto_commit(false)
+        end
+=begin
+        begin
+          @connection = java.sql.DriverManager.getConnection(@url, prop)
+          @connection.set_auto_commit(false)
+        rescue java.sql.SQLException => exception
+          if (exception['message'].index("parse sql 'rollback' error: unexpected ID at position 9 near rollback") && @databaseType == 'MongoDBBI')
+            ###setRollbackOnReturn(false)  ####TODO
+            @connection = java.sql.DriverManager.getConnection(@url, prop)
+            ###@connection.set_auto_commit(true)
+          end
+        end
+ =end
+
       end
 
-      def build_url(connectionInfo = {})
-        matches = connectionInfo['url'].scan(JDBC_MYSQL_PATTERN)
+      def build_url(url)
+        matches = url.scan(JDBC_MYSQL_PATTERN)
         raise 'Cannot reach the url' unless matches
 
         host = matches[0][0]
         port = matches[0][2]&.to_i || MYSQL_DEFAULT_PORT
 
-        if(connectionInfo['databaseType'] == 'MongoDBBI')
+        if(@databaseType == 'MongoDBBI')
           "#{JDBC_MYSQL_PROTOCOL}#{host}:#{port}/#{@database}?authenticationPlugins=org.mongodb.mongosql.auth.plugin.MongoSqlAuthenticationPlugin&#{get_ssl_mode(@ssl_mode)}&useCursorFetch=true&enabledTLSProtocols=TLSv1.2"
         else
           "#{JDBC_MYSQL_PROTOCOL}#{host}:#{port}/#{@database}?#{get_ssl_mode(@ssl_mode)}&useCursorFetch=true&enabledTLSProtocols=TLSv1.2"
