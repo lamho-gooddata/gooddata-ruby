@@ -21,9 +21,9 @@ module GoodData
       JDBC_MYSQL_PATTERN = %r{jdbc:mysql:\/\/([^:^\/]+)(:([0-9]+))?(\/)?}
       MYSQL_DEFAULT_PORT = 3306
       JDBC_MYSQL_PROTOCOL = 'jdbc:mysql://'
-      VERIFY_FULL = 'VERIFY_IDENTITY'
-      PREFER = 'PREFERRED'
-      REQUIRE = 'REQUIRED'
+      VERIFY_FULL = 'useSSL=true&verifyServerCertificate=true'
+      PREFER = 'useSSL=true&requireSSL=false&verifyServerCertificate=false'
+      REQUIRE = 'useSSL=true&requireSSL=true&verifyServerCertificate=false'
       MYSQL_FETCH_SIZE = 1000
 
       class << self
@@ -41,7 +41,7 @@ module GoodData
           @ssl_mode = options['mysql_client']['connection']['sslMode']
           raise "SSL Mode should be prefer, require and verify-full" unless @ssl_mode == 'prefer' || @ssl_mode == 'require' || @ssl_mode == 'verify-full'
 
-          @url = build_url(options['mysql_client']['connection']['url'])
+          @url = build_url(options['mysql_client']['connection'])
         else
           raise('Missing connection info for Mysql client')
         end
@@ -86,14 +86,18 @@ module GoodData
         @connection.set_auto_commit(false)
       end
 
-      def build_url(url)
-        matches = url.scan(JDBC_MYSQL_PATTERN)
+      def build_url(connectionInfo = {})
+        matches = connectionInfo['url'].scan(JDBC_MYSQL_PATTERN)
         raise 'Cannot reach the url' unless matches
 
         host = matches[0][0]
         port = matches[0][2]&.to_i || MYSQL_DEFAULT_PORT
 
-        "#{JDBC_MYSQL_PROTOCOL}#{host}:#{port}/#{@database}?sslmode=#{get_ssl_mode(@ssl_mode)}&useCursorFetch=true&enabledTLSProtocols=TLSv1.2"
+        if(connectionInfo['databaseType'] == 'MongoDBBI')
+          "#{JDBC_MYSQL_PROTOCOL}#{host}:#{port}/#{@database}?authenticationPlugins=org.mongodb.mongosql.auth.plugin.MongoSqlAuthenticationPlugin&#{get_ssl_mode(@ssl_mode)}&useCursorFetch=true&enabledTLSProtocols=TLSv1.2"
+        else
+          "#{JDBC_MYSQL_PROTOCOL}#{host}:#{port}/#{@database}?#{get_ssl_mode(@ssl_mode)}&useCursorFetch=true&enabledTLSProtocols=TLSv1.2"
+        end
       end
 
       def get_ssl_mode(ssl_mode)
